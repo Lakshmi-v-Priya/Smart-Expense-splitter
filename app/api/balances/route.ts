@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(expenses);
   } catch (error) {
-    console.error("Balance route error:", error);
+    console.error("Balance fetch error:", error);
     return NextResponse.json(
       { error: "Failed to fetch balances" },
       { status: 500 }

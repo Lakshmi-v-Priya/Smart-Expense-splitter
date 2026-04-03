@@ -8,46 +8,23 @@ export interface IExpense extends Document {
   splitType: string;
   category: string;
   groupId: string;
-  createdAt?: Date;
-  updatedAt?: Date;
 }
 
 const ExpenseSchema = new Schema<IExpense>(
   {
-    title: {
-      type: String,
-      required: true,
-    },
-    amount: {
-      type: Number,
-      required: true,
-    },
-    paidBy: {
-      type: String,
-      required: true,
-    },
-    members: {
-      type: [String],
-      required: true,
-    },
-    splitType: {
-      type: String,
-      default: "equal",
-    },
-    category: {
-      type: String,
-      default: "General",
-    },
-    groupId: {
-      type: String,
-      required: true,
-    },
+    title: { type: String, required: true },
+    amount: { type: Number, required: true },
+    paidBy: { type: String, required: true },
+    members: [{ type: String, required: true }],
+    splitType: { type: String, default: "equal" },
+    category: { type: String, default: "General" },
+    groupId: { type: String, required: true },
   },
   { timestamps: true }
 );
 
 const Expense: Model<IExpense> =
-  mongoose.models.Expense ||
+  (mongoose.models.Expense as Model<IExpense>) ||
   mongoose.model<IExpense>("Expense", ExpenseSchema);
 
 export default Expense;
