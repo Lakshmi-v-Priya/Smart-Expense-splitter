@@ -1,17 +1,42 @@
 import mongoose from "mongoose";
 
-const MONGODB_URI = process.env.MONGODB_URI!;
+const MONGODB_URI = process.env.MONGODB_URI as string;
 
-let cached = (global as any).mongoose || { conn: null, promise: null };
+if (!MONGODB_URI) {
+  throw new Error("Please define MONGODB_URI in .env.local");
+}
 
-export async function connectDB() {
-  if (cached.conn) return cached.conn;
+interface MongooseCache {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
+}
 
-  if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI);
+declare global {
+  var mongooseCache: MongooseCache | undefined;
+}
+
+let cached = global.mongooseCache;
+
+if (!cached) {
+  cached = global.mongooseCache = {
+    conn: null,
+    promise: null,
+  };
+}
+
+async function connectDB(): Promise<typeof mongoose> {
+  if (cached!.conn) {
+    return cached!.conn;
   }
 
-  cached.conn = await cached.promise;
-  (global as any).mongoose = cached;
-  return cached.conn;
+  if (!cached!.promise) {
+    cached!.promise = mongoose.connect(MONGODB_URI, {
+      dbName: "smart-expense-splitter",
+    });
+  }
+
+  cached!.conn = await cached!.promise;
+  return cached!.conn;
 }
+
+export default connectDB;
