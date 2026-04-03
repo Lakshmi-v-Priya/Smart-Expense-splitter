@@ -12,8 +12,9 @@ type GroupType = {
 type ExpenseItem = {
   title: string;
   amount: number;
-  paidBy: string;
+  paidBy?: string;
   splitBetween?: string[];
+  members?: string[];
   category?: string;
 };
 
@@ -35,12 +36,19 @@ export default function GroupDetails() {
 
   async function fetchData() {
     try {
-      const groupsRes = await fetch("/api/groups");
+      const groupsRes = await fetch("/api/groups", {
+        cache: "no-store",
+      });
       const groups = await groupsRes.json();
       const current = groups.find((g: GroupType) => g._id === groupId);
+
       setGroup(current || null);
 
-      const expRes = await fetch(`/api/expenses?groupId=${groupId}`);
+      const expRes = await fetch(
+        `/api/expenses?groupId=${groupId}`,
+        { cache: "no-store" }
+      );
+
       const expData = await expRes.json();
       setExpenses(Array.isArray(expData) ? expData : []);
     } catch {
@@ -68,11 +76,37 @@ export default function GroupDetails() {
       document.removeEventListener("mousedown", handleOutside);
   }, []);
 
-  function toggleMember(member: string) {
-    const alreadySelected =
-      expense.splitBetween.includes(member);
+  function detectCategory(title: string) {
+    const text = title.toLowerCase();
 
-    if (alreadySelected) {
+    if (
+      text.includes("food") ||
+      text.includes("dinner") ||
+      text.includes("lunch")
+    )
+      return "Food";
+
+    if (
+      text.includes("uber") ||
+      text.includes("travel") ||
+      text.includes("bus")
+    )
+      return "Travel";
+
+    if (
+      text.includes("rent") ||
+      text.includes("hotel") ||
+      text.includes("room")
+    )
+      return "Rent";
+
+    return "General";
+  }
+
+  function toggleMember(member: string) {
+    const exists = expense.splitBetween.includes(member);
+
+    if (exists) {
       setExpense({
         ...expense,
         splitBetween: expense.splitBetween.filter(
@@ -87,6 +121,7 @@ export default function GroupDetails() {
     }
   }
 
+  // ✅ AUTO SPLIT COSTS EQUALLY
   async function handleAddExpense() {
     if (
       !expense.title ||
@@ -94,71 +129,102 @@ export default function GroupDetails() {
       !expense.paidBy ||
       expense.splitBetween.length === 0
     ) {
+      alert("Please fill all fields");
       return;
     }
 
-    await fetch("/api/expenses", {
+    const selectedMembers = expense.splitBetween;
+    const totalAmount = Number(expense.amount);
+    const splitAmount = totalAmount / selectedMembers.length;
+
+    const payload = {
+      groupId,
+      title: expense.title,
+      amount: totalAmount,
+      paidBy: expense.paidBy,
+      splitBetween: selectedMembers,
+      splitAmount, // ✅ explicit equal split
+      category: detectCategory(expense.title),
+    };
+
+    const res = await fetch("/api/expenses", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        groupId,
-        title: expense.title,
-        amount: Number(expense.amount),
-        paidBy: expense.paidBy,
-        splitBetween: expense.splitBetween,
-      }),
+      body: JSON.stringify(payload),
     });
 
-    setExpense({
-      title: "",
-      amount: "",
-      paidBy: "",
-      splitBetween: [],
-    });
+    if (res.ok) {
+      setExpense({
+        title: "",
+        amount: "",
+        paidBy: "",
+        splitBetween: [],
+      });
 
-    fetchData();
+      await fetchData();
+    }
   }
 
-  // ✅ SAFE BALANCE CALCULATION
+  const categoryTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+
+    expenses.forEach((exp) => {
+      const cat = exp.category || "General";
+      totals[cat] =
+        (totals[cat] || 0) + Number(exp.amount || 0);
+    });
+
+    return totals;
+  }, [expenses]);
+
   const computedBalances = useMemo(() => {
-    const map: Record<string, number> = {};
+    const balances: Record<string, number> = {};
+
+    group?.members?.forEach((member) => {
+      balances[member] = 0;
+    });
 
     expenses.forEach((exp) => {
       const amount = Number(exp.amount || 0);
+      const payer = exp.paidBy || "";
 
       const splitMembers = Array.isArray(exp.splitBetween)
         ? exp.splitBetween
+        : Array.isArray(exp.members)
+        ? exp.members
         : [];
 
-      if (splitMembers.length === 0) return;
+      if (!payer || splitMembers.length === 0) return;
 
       const share = amount / splitMembers.length;
 
-      // payer gets credited
-      map[exp.paidBy] =
-        (map[exp.paidBy] || 0) + amount;
+      balances[payer] =
+        (balances[payer] || 0) + amount;
 
-      // selected members owe share
       splitMembers.forEach((member) => {
-        map[member] =
-          (map[member] || 0) - share;
+        balances[member] =
+          (balances[member] || 0) - share;
       });
     });
 
-    return map;
-  }, [expenses]);
+    return balances;
+  }, [expenses, group]);
 
-  // ✅ WHO OWES WHOM
   const settlements = useMemo(() => {
     const debtors: [string, number][] = [];
     const creditors: [string, number][] = [];
 
-    Object.entries(computedBalances).forEach(([name, value]) => {
-      if (value < 0) debtors.push([name, Math.abs(value)]);
-      if (value > 0) creditors.push([name, value]);
-    });
+    Object.entries(computedBalances).forEach(
+      ([name, value]) => {
+        if (value < -0.01) {
+          debtors.push([name, Math.abs(value)]);
+        } else if (value > 0.01) {
+          creditors.push([name, value]);
+        }
+      }
+    );
 
     const result: string[] = [];
     let i = 0;
@@ -219,7 +285,6 @@ export default function GroupDetails() {
             }
           />
 
-          {/* Paid By */}
           <select
             className="rounded-2xl bg-slate-900/70 p-4 text-white"
             value={expense.paidBy}
@@ -232,13 +297,10 @@ export default function GroupDetails() {
           >
             <option value="">Select payer</option>
             {group?.members?.map((member) => (
-              <option key={member} value={member}>
-                {member}
-              </option>
+              <option key={member}>{member}</option>
             ))}
           </select>
 
-          {/* Premium Split Among Dropdown */}
           <div className="relative" ref={dropdownRef}>
             <button
               type="button"
@@ -276,33 +338,113 @@ export default function GroupDetails() {
           onClick={handleAddExpense}
           className="mt-5 rounded-2xl bg-gradient-to-r from-cyan-400 to-blue-500 px-8 py-4 font-bold text-slate-950"
         >
-          Add Expense
+          Auto Split Expense
         </button>
+      </div>
+
+      {/* Category */}
+      <div className="rounded-[32px] bg-white/10 p-8 shadow-xl">
+        <h2 className="text-2xl font-bold text-pink-300">
+          Category-wise Spending
+        </h2>
+
+        <div className="grid md:grid-cols-3 gap-4 mt-6">
+          {Object.entries(categoryTotals).map(([cat, total]) => (
+            <div key={cat} className="rounded-2xl bg-slate-900/70 p-5">
+              <p className="text-white">{cat}</p>
+              <p className="text-cyan-300 text-2xl font-bold">
+                ₹{total.toFixed(2)}
+              </p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ✅ Expense Split Breakdown */}
+      <div className="rounded-[32px] bg-white/10 p-8 shadow-xl">
+        <h2 className="text-2xl font-bold text-cyan-300">
+          Expense Split Breakdown
+        </h2>
+
+        <div className="mt-6 space-y-5">
+          {expenses.map((exp, index) => {
+            const splitMembers = Array.isArray(exp.splitBetween)
+              ? exp.splitBetween
+              : Array.isArray(exp.members)
+              ? exp.members
+              : [];
+
+            const share =
+              splitMembers.length > 0
+                ? Number(exp.amount) / splitMembers.length
+                : 0;
+
+            return (
+              <div
+                key={index}
+                className="rounded-2xl bg-slate-900/70 p-5"
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-white font-semibold text-lg">
+                      {exp.title}
+                    </p>
+                    <p className="text-slate-400">
+                      Paid by {exp.paidBy}
+                    </p>
+                  </div>
+
+                  <p className="text-cyan-300 text-xl font-bold">
+                    ₹{Number(exp.amount).toFixed(2)}
+                  </p>
+                </div>
+
+                <div className="mt-4 grid md:grid-cols-3 gap-3">
+                  {splitMembers.map((member, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded-xl bg-white/5 p-3"
+                    >
+                      <p className="text-white">{member}</p>
+                      <p className="text-pink-300 font-bold">
+                        ₹{share.toFixed(2)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Live Balances */}
       <div className="rounded-[32px] bg-white/10 p-8 shadow-xl">
-        <h2 className="text-3xl font-bold text-emerald-300">
+        <h2 className="text-2xl font-bold text-emerald-300">
           Live Balances
         </h2>
 
-        <div className="mt-6 grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-3 gap-4 mt-6">
           {Object.entries(computedBalances).map(([name, amount]) => (
             <div
               key={name}
               className="rounded-2xl bg-slate-900/70 p-5"
             >
-              <p className="text-white font-semibold">{name}</p>
+              <p className="text-white">{name}</p>
               <p
-                className={`mt-2 text-xl font-bold ${
+                className={`font-bold text-xl ${
                   amount > 0
                     ? "text-emerald-300"
-                    : "text-rose-400"
+                    : amount < 0
+                    ? "text-rose-400"
+                    : "text-slate-300"
                 }`}
               >
                 {amount > 0
-                  ? `Gets Back ₹${amount.toFixed(2)}`
-                  : `Owes ₹${Math.abs(amount).toFixed(2)}`}
+                  ? `Gets ₹${amount.toFixed(2)}`
+                  : amount < 0
+                  ? `Owes ₹${Math.abs(amount).toFixed(2)}`
+                  : "Settled"}
               </p>
             </div>
           ))}
@@ -311,7 +453,7 @@ export default function GroupDetails() {
 
       {/* Who Owes Whom */}
       <div className="rounded-[32px] bg-white/10 p-8 shadow-xl">
-        <h2 className="text-3xl font-bold text-purple-300">
+        <h2 className="text-2xl font-bold text-purple-300">
           Who Owes Whom
         </h2>
 
