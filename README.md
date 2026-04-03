@@ -1,5 +1,4 @@
-<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/566a07ac-c0e4-4c4a-9fba-c0f686620407" /># Smart Expense Splitter 💸
-
+### SMART EXPENSE SPILLTER 
 A simple and practical web application built to make group expense management easy.
 Whether it’s a trip with friends, hostel room expenses, team outings, or shared rent, this app helps track who paid, who owes, and how much needs to be settled — without the usual confusion.
 
