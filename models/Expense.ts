@@ -1,30 +1,29 @@
-import mongoose, { Schema, Document, Model } from "mongoose";
+import mongoose, { Schema, model, models, Document } from "mongoose";
 
 export interface IExpense extends Document {
+  groupId: string;
   title: string;
   amount: number;
   paidBy: string;
   members: string[];
   splitType: string;
   category: string;
-  groupId: string;
 }
 
 const ExpenseSchema = new Schema<IExpense>(
   {
+    groupId: { type: String, required: true },
     title: { type: String, required: true },
     amount: { type: Number, required: true },
     paidBy: { type: String, required: true },
-    members: [{ type: String, required: true }],
+    members: [{ type: String }],
     splitType: { type: String, default: "equal" },
     category: { type: String, default: "General" },
-    groupId: { type: String, required: true },
   },
   { timestamps: true }
 );
 
-const Expense: Model<IExpense> =
-  (mongoose.models.Expense as Model<IExpense>) ||
-  mongoose.model<IExpense>("Expense", ExpenseSchema);
+const Expense =
+  models.Expense || model<IExpense>("Expense", ExpenseSchema);
 
 export default Expense;
