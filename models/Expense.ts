@@ -1,6 +1,18 @@
-import mongoose from "mongoose";
+import mongoose, { Schema, Document, Model } from "mongoose";
 
-const ExpenseSchema = new mongoose.Schema(
+export interface IExpense extends Document {
+  title: string;
+  amount: number;
+  paidBy: string;
+  members: string[];
+  splitType: string;
+  category: string;
+  groupId: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+const ExpenseSchema = new Schema<IExpense>(
   {
     title: {
       type: String,
@@ -34,5 +46,8 @@ const ExpenseSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export default mongoose.models.Expense ||
-  mongoose.model("Expense", ExpenseSchema);
+const Expense: Model<IExpense> =
+  mongoose.models.Expense ||
+  mongoose.model<IExpense>("Expense", ExpenseSchema);
+
+export default Expense;
